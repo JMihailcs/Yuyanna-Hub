@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Reglas de seguridad de Yuyanna Hub (plan gratuito, sin Cloud Functions).
+// Cualquier usuario autenticado accede; sin restricción de dominio de correo.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Cualquier usuario autenticado (sin restricción de dominio).
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+    // Admin COMPLETO: doc en `admins/{uid}` con rol 'admin' (un doc sin campo
+    // `rol` se considera 'admin' por compatibilidad). El rol 'admin_paqarina'
+    // NO es admin completo (solo lectura de eventos/grupos).
+    function esAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid))
+            .data.get('rol', 'admin') == 'admin';
+    }
+
+    // Cualquier rol admin (completo o `admin_paqarina`): tiene doc en `admins`.
+    // Se usa para permitir a Paqarina publicar eventos sin darle el panel.
+    function tieneRolAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Correos fundadores: pueden auto-provisionarse como admin la 1ª vez.
+    // MANTENER SINCRONIZADO con AdminService.correosFundadores.
+    function esFundador() {
+      return request.auth != null
+        && request.auth.token.email in [
+          '215783@unsaac.edu.pe'
+        ];
+    }
+
+    match /admins/{uid} {
+      // Los admins ven la lista; cada quien ve su propio doc.
+      allow read: if esAdmin()
+        || (request.auth != null && request.auth.uid == uid);
+      // Un fundador se auto-provisiona; un admin promueve a otros.
+      allow create: if request.auth != null
+        && ((request.auth.uid == uid && esFundador()) || esAdmin());
+      allow delete: if esAdmin();
+      // Un admin completo puede cambiar el rol de otro (admin ↔ admin_paqarina).
+      allow update: if esAdmin();
+    }
+
+    // --- Directorio de perfiles ---
+    // El id del documento es el uid de Firebase Auth.
+    match /usuarios/{usuarioId} {
+      allow read: if estaAutenticado();
+      allow create, update: if estaAutenticado() && request.auth.uid == usuarioId;
+      allow delete: if false;
+    }
+
+    // --- Convocatorias (eventos de Paqarina) ---
+    // Cualquiera autenticado los lee. Publicar: cualquier rol admin (incluido
+    // `admin_paqarina`). Editar/eliminar: solo admin completo (desde el panel).
+    match /convocatorias/{convocatoriaId} {
+      allow read: if estaAutenticado();
+      allow create: if tieneRolAdmin();
+      allow update, delete: if esAdmin();
+    }
+
+    // --- Formación de equipos: grupos, invitaciones, solicitudes ---
+    // TRADE-OFF (plan gratuito, sin Cloud Functions): la lógica de equipos
+    // (aceptar invitación, unirse, auto-cierre en cascada) corre en el CLIENTE
+    // y toca documentos de otros usuarios (p. ej. al llenarse el grupo se
+    // expiran invitaciones ajenas). Por eso se permite escritura a cualquier
+    // usuario autenticado. Cuando migres a Blaze, mueve estas operaciones a
+    // Cloud Functions y endurece estas reglas (leader/self, transacciones).
+    match /grupos/{grupoId} {
+      allow read: if estaAutenticado();
+      allow create: if estaAutenticado()
+        && request.resource.data.lider_id == request.auth.uid;
+      allow update: if estaAutenticado();
+      allow delete: if estaAutenticado()
+        && (resource.data.lider_id == request.auth.uid || esAdmin());
+    }
+
+    match /invitaciones/{invitacionId} {
+      allow read, write: if estaAutenticado();
+    }
+
+    match /solicitudes/{solicitudId} {
+      allow read, write: if estaAutenticado();
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "214497383683",
+    "project_id": "yuyanna-hub",
+    "storage_bucket": "yuyanna-hub.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:214497383683:android:26ae0c2f229058d1434536",
+        "android_client_info": {
+          "package_name": "com.example.yuyanna_hub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3UDmgeQ74-TEc_SkeVZZmPuFtBzDKvwQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

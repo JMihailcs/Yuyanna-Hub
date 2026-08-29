@@ -1,0 +1,198 @@
+@startuml base_de_datos_yuyanna_hub
+' =====================================================================
+' Yuyanna Hub — Estructura de base de datos
+' Esquema relacional del dominio implementado en lib/models y
+' lib/services/api_service.dart (hoy simulado en memoria).
+' Las listas de los modelos (habilidades, miembros, coincidencias)
+' se normalizan en tablas intermedias.
+' =====================================================================
+
+skinparam linetype ortho
+hide circle
+
+' ------------------------- Entidades principales --------------------
+
+entity "usuario" as usuario {
+  * id : VARCHAR <<PK>>
+  --
+  * nombre : VARCHAR
+  * correo : VARCHAR <<UNIQUE>>
+  * password_hash : VARCHAR
+  * escuela_profesional : VARCHAR
+  * semestre : INT
+}
+note bottom of usuario
+  correo debe terminar en
+  @unsaac.edu.pe
+end note
+
+entity "convocatoria" as convocatoria {
+  * id : VARCHAR <<PK>>
+  --
+  * titulo : VARCHAR
+  * descripcion : TEXT
+  * tipo : tipo_convocatoria
+  * fecha_publicacion : DATE
+  * fecha_cierre : DATE
+  * premio : VARCHAR
+  * requisitos : TEXT
+}
+note bottom of convocatoria
+  El feed ordena por
+  fecha_publicacion DESC
+end note
+
+entity "grupo" as grupo {
+  * id : VARCHAR <<PK>>
+  --
+  * convocatoria_id : VARCHAR <<FK>>
+  * lider_id : VARCHAR <<FK usuario>>
+  * nombre : VARCHAR
+  * descripcion : TEXT
+  * capacidad_max : INT
+  * abierto : BOOLEAN
+  * estado : estado_grupo
+}
+note bottom of grupo
+  capacidad_max entre 2 y 8.
+  borrador: solo visible para el líder.
+  Al llenarse el cupo: abierto = false,
+  invitaciones pendientes -> expirada,
+  solicitudes pendientes -> rechazada.
+end note
+
+entity "habilidad" as habilidad {
+  * id : VARCHAR <<PK>>
+  --
+  * nombre : VARCHAR <<UNIQUE>>
+}
+
+' --------------------- Tablas intermedias (N:M) ----------------------
+
+entity "grupo_miembro" as grupo_miembro {
+  * grupo_id : VARCHAR <<PK, FK>>
+  * usuario_id : VARCHAR <<PK, FK>>
+  --
+  * fecha_ingreso : TIMESTAMP
+}
+note bottom of grupo_miembro
+  El líder también figura como miembro.
+  COUNT(*) <= grupo.capacidad_max
+end note
+
+entity "usuario_habilidad" as usuario_habilidad {
+  * usuario_id : VARCHAR <<PK, FK>>
+  * habilidad_id : VARCHAR <<PK, FK>>
+}
+
+entity "grupo_habilidad_buscada" as grupo_habilidad_buscada {
+  * grupo_id : VARCHAR <<PK, FK>>
+  * habilidad_id : VARCHAR <<PK, FK>>
+}
+
+' ------------------- Matching e ingreso a grupos ---------------------
+
+entity "invitacion_grupo" as invitacion_grupo {
+  * id : VARCHAR <<PK>>
+  --
+  * grupo_id : VARCHAR <<FK>>
+  * usuario_id : VARCHAR <<FK>>
+  * puntuacion : INT
+  * estado : estado_invitacion
+  * fecha : TIMESTAMP
+}
+note bottom of invitacion_grupo
+  Generadas al publicar el grupo:
+  top 10 puntuaciones
+  (10 pts por habilidad coincidente
+  + semestre como desempate).
+  Aceptarla une al usuario
+  automáticamente, sin aprobación
+  del líder.
+  UNIQUE (grupo_id, usuario_id)
+  con estado = pendiente
+end note
+
+entity "invitacion_habilidad_coincidente" as inv_coincidencia {
+  * invitacion_id : VARCHAR <<PK, FK>>
+  * habilidad_id : VARCHAR <<PK, FK>>
+}
+note bottom of inv_coincidencia
+  Snapshot de las coincidencias
+  al momento de la invitación
+end note
+
+entity "solicitud_ingreso" as solicitud_ingreso {
+  * id : VARCHAR <<PK>>
+  --
+  * grupo_id : VARCHAR <<FK>>
+  * usuario_id : VARCHAR <<FK>>
+  * estado : estado_solicitud
+  * fecha : TIMESTAMP
+}
+note bottom of solicitud_ingreso
+  Única vía de ingreso sin invitación:
+  queda pendiente hasta que el líder
+  la acepte o rechace (nunca es
+  automática). Solo sobre grupos
+  publicados, abiertos y con cupo.
+  UNIQUE (grupo_id, usuario_id)
+  con estado = pendiente
+end note
+
+' ------------------------------ Enums --------------------------------
+
+enum "tipo_convocatoria" as tipo_convocatoria {
+  Incubación
+  Intercambio
+  Investigación
+}
+
+enum "estado_grupo" as estado_grupo {
+  borrador
+  publicado
+}
+
+enum "estado_invitacion" as estado_invitacion {
+  pendiente
+  aceptada
+  rechazada
+  expirada
+}
+
+enum "estado_solicitud" as estado_solicitud {
+  pendiente
+  aceptada
+  rechazada
+}
+
+' --------------------------- Relaciones ------------------------------
+
+convocatoria ||--o{ grupo : "recibe postulaciones de"
+
+usuario ||--o{ grupo : "lidera"
+
+grupo ||--|{ grupo_miembro : ""
+usuario ||--o{ grupo_miembro : "integra"
+
+usuario ||--o{ usuario_habilidad : ""
+habilidad ||--o{ usuario_habilidad : ""
+
+grupo ||--o{ grupo_habilidad_buscada : "busca"
+habilidad ||--o{ grupo_habilidad_buscada : ""
+
+grupo ||--o{ invitacion_grupo : "emite al publicarse"
+usuario ||--o{ invitacion_grupo : "recibe (notificación)"
+
+invitacion_grupo ||--o{ inv_coincidencia : ""
+habilidad ||--o{ inv_coincidencia : ""
+
+grupo ||--o{ solicitud_ingreso : "recibe"
+usuario ||--o{ solicitud_ingreso : "envía"
+
+tipo_convocatoria .. convocatoria
+estado_grupo .. grupo
+estado_invitacion .. invitacion_grupo
+estado_solicitud .. solicitud_ingreso
+
+@enduml

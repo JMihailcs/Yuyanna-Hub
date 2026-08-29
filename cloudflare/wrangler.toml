@@ -1,0 +1,13 @@
+name = "yuyanna-uploads"
+main = "upload-worker.js"
+compatibility_date = "2024-11-01"
+
+# Bucket R2 donde se guardan imágenes y videos.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "yuyanna-media"
+
+# Id del proyecto Firebase. NO es un secreto: el Worker solo lo usa para
+# comprobar el `aud`/`iss` del ID token contra las claves PÚBLICAS de Google.
+[vars]
+FIREBASE_PROJECT_ID = "yuyanna-hub"
